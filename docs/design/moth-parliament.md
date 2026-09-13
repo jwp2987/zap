@@ -644,10 +644,25 @@ And the transport is **strictly one request, one response**:
 (`manager.rs:773, 2551, 2577, 2601, 2670`). A pty session is the opposite: many messages
 over time -- output chunks, exit, resize acks -- with no known count.
 
-So the first piece of work is adding a **stream dimension**: either long-lived
-subscriptions keyed by a session id alongside the one-shot map, or a `RequestId` able to
-receive N messages before a terminal one. This is load-bearing. Everything else is
-operations, and operations are easy.
+**CORRECTION 2026-09-12: the streaming path already exists.** The paragraph above read
+the one-shot map and concluded the transport could not stream. It can.
+`ServerMessage`'s `oneof` already carries server-initiated pushes --
+`RepoMetadataUpdatePush` and `BufferUpdatedPush` (`proto/remote_server.proto:167,174`)
+-- which are not responses to any request. The manager surfaces them as events keyed by
+`host_id` (`RemoteServerEvent::{RepoMetadataUpdated, BufferUpdated}`,
+`manager.rs:408,420`), bypassing `pending_host_requests` entirely.
+
+So there is no protocol redesign to do. What is missing is narrower:
+
+- **A session identity dimension.** Pushes are keyed by `host_id`, and a host can hold
+  several sessions. Output has to be addressable to one of them.
+- **Session-shaped push variants**: output chunk, exit, resize ack.
+- **Session lifecycle operations**, which are ordinary request/response and belong in the
+  existing one-shot path: spawn, write stdin, resize, signal, detach, reattach, list.
+
+That is a meaningfully smaller and better-supported piece of work than "retrofit streaming
+onto a request/response transport", which is what the previous paragraph implied. The
+one-shot map is correct for the operations; it was never the whole transport.
 
 **Do not retrofit this as "run and return the output".** That fits the existing shape,
 demos convincingly, and is the wrong architecture for the same reason recorded under
