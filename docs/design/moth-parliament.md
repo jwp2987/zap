@@ -534,6 +534,45 @@ already the only warpification route on Windows. The right first question is not
 should we build" but **"what does the remote-server extension already do, and what is
 missing for it to own a session rather than assist a shell?"**
 
+### The dashboard: hosts and groups need a surface, not a settings page — 2026-09-12
+
+**Decided with the maintainer.** Settings **stores** the registry; a dashboard **shows and
+operates** it. Two surfaces, one source of truth, and the split is what keeps them from
+disagreeing:
+
+- **Settings** holds the data, because the maintainer chose settings over SQLite: which
+  hosts exist, which groups they belong to, hand-editable in the TOML like any other
+  preference.
+- **The dashboard** is where you look and act: every host and group with install state,
+  last reached, OS and arch, and the install / upgrade / remove actions. Openable as its
+  own tab, not buried three levels into a preferences tree.
+
+A settings page alone is the wrong home for this. Settings answers "what did I
+configure"; the question here is operational -- "what is installed where, what is
+reachable, what needs upgrading" -- and that is a thing you open, scan and act on, not a
+form you fill in.
+
+**It is a pane type, and the precedent is exact.** `LeafContents::Settings(..)` is already
+a pane over app state with its own `settings_pane.rs`, and this branch has just built a
+new pane type end to end for conversations. The sites are known, not guesswork:
+`LeafContents`, `PanesLayout` (so it can be a whole tab), the `initial_layout` match,
+`is_persisted` and the sqlite read/write pair, `resolve_pane_type` for the vertical tab
+list, and the `+` new-session menu.
+
+**Decide before building:**
+
+1. **Does it persist and restore?** The settings pane's behaviour is the reference. A
+   dashboard restoring into a stale view is worse than not restoring, unless it re-probes
+   on open -- which is the more likely right answer, since everything it shows is a claim
+   about another machine.
+2. **What does it show when a host has never been reached?** The registry can hold a
+   declared target with no observed state at all. "Unknown" must be visibly distinct from
+   "not installed", exactly as the footer bar's unknown-host colour is distinct from a
+   matched rule -- the same false-safety trap, in a different surface.
+3. **Does it drive install, or only show it?** The scripts already exist and install is
+   currently implicit. If the dashboard is where you install, that is also where partial
+   failure across a group has to be legible: N hosts, N outcomes, not one spinner.
+
 ### Host groups: a service is rarely one machine — 2026-09-12
 
 **Proposed by the maintainer.** Hosts are not independent. A service is split across
