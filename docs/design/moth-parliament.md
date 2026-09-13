@@ -534,6 +534,56 @@ already the only warpification route on Windows. The right first question is not
 should we build" but **"what does the remote-server extension already do, and what is
 missing for it to own a session rather than assist a shell?"**
 
+### Requirement 5 needs a surface, and a registry that does not exist — 2026-09-12
+
+"Discoverable and disposable -- the app can tell whether it is installed, install it,
+upgrade it, and remove it, without the user managing versions" is currently satisfied
+only in the machinery, never in the product. There is nowhere to look.
+
+**What exists:** `install_remote_server.sh` (fail-closed, build-time-pinned digest),
+`preinstall_check.sh` with `PreinstallStatus::{Supported, Unsupported{reason}, Unknown}`,
+`RemoteOs`/`RemoteArch`, and a working install path.
+
+**What does not:** any record of which hosts the app knows about. The only host-keyed
+state is `active_repos_by_host` and `host_labels` in
+`app/src/remote_server/codebase_index_model.rs:178-181` -- owned by the codebase-index
+feature, incidental, and not a registry. Ask "which hosts have the remote server
+installed, and at what version" and nothing can answer.
+
+**And install is implicit.** It happens as a side effect of warpifying an ssh session
+(`app/src/remote_server/ssh_transport.rs`). The user never asks for it, is never told it
+happened, and cannot undo it. That is defensible as a zero-friction default and
+indefensible as the only option once hosts are a thing you manage.
+
+**So the work is three pieces, in order:**
+
+1. **A host registry as a first-class model.** Per host: the target as configured, the
+   resolved identity (`HostId`), install state (absent / installed at version X /
+   unsupported with reason / unknown), when it was last reached, and its
+   `RemoteOs`/`RemoteArch`. Persisted, since "what do I have installed where" must
+   survive a restart to be worth anything.
+
+2. **Explicit install, upgrade and remove**, driven from the UI rather than only as a
+   side effect of connecting. The scripts already do the work; what is missing is a
+   caller the user controls and a result they can see. Removal especially -- there is
+   currently no way to take it off a host from inside the app.
+
+3. **The surface itself.** A list of hosts with status, and actions per host. Settings is
+   the obvious home.
+
+**This converges with the prototype's setting.** `warpify.ssh.remote_hosts` is a
+hand-edited list of targets the user declares. The registry is the observed state of
+those targets. They should become one thing -- a host you add in the UI is both a session
+target and a registry entry -- rather than a settings list and a status panel that
+disagree. Do not build the panel as a second, parallel list.
+
+**Security note, unchanged by any of this:** the remote server has no listening socket of
+its own (no `TcpListener`/`bind`/`UnixListener` anywhere in the crate). It is spawned by
+ssh and speaks over stdin/stdout, multiplexed onto the user's existing `ControlMaster`
+session with `PasswordAuthentication=no` and `ForwardX11=no`. A management UI must not
+change that: installing from a panel still means running the same fail-closed script over
+the same authenticated channel, never opening a port or holding a credential.
+
 ### Scoping session ownership — 2026-09-12
 
 Read the crate to answer "what is missing for it to own a session rather than assist a
