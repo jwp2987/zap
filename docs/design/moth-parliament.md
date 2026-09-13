@@ -534,6 +534,59 @@ already the only warpification route on Windows. The right first question is not
 should we build" but **"what does the remote-server extension already do, and what is
 missing for it to own a session rather than assist a shell?"**
 
+### Scoping session ownership — 2026-09-12
+
+Read the crate to answer "what is missing for it to own a session rather than assist a
+shell". The answer is smaller than a new binary and larger than a new operation.
+
+**The blocker is the transport shape, not the feature set.** Every existing operation is
+a file query -- `NavigateToDirectory`, `LoadRepoMetadataDirectory`, `IndexCodebase`,
+`ResyncCodebase`, `DropCodebaseIndex`, `GetFragmentMetadataFromHash`
+(`crates/remote_server/src/manager.rs:111`). Nothing starts a process, writes to one,
+reads its output, or outlives a disconnection.
+
+And the transport is **strictly one request, one response**:
+`pending_host_requests: HashMap<RequestId, PendingHostRequest>` holds a
+`oneshot::Receiver`, and the entry is `remove`d the moment a response arrives
+(`manager.rs:773, 2551, 2577, 2601, 2670`). A pty session is the opposite: many messages
+over time -- output chunks, exit, resize acks -- with no known count.
+
+So the first piece of work is adding a **stream dimension**: either long-lived
+subscriptions keyed by a session id alongside the one-shot map, or a `RequestId` able to
+receive N messages before a terminal one. This is load-bearing. Everything else is
+operations, and operations are easy.
+
+**Do not retrofit this as "run and return the output".** That fits the existing shape,
+demos convincingly, and is the wrong architecture for the same reason recorded under
+Model C: the block list showing a live pty is the product, and a completed blob is not a
+terminal.
+
+**The work, in dependency order:**
+
+1. **A streaming channel** in the protocol and manager, per the above.
+2. **Session operations**: spawn (cwd, shell, env), write stdin, resize, signal, detach,
+   reattach, list. Contrast with today's six, all read-only file queries.
+3. **Remote-side ownership**: the daemon holds the pty, and keeps holding it when the
+   client goes away. Nothing today outlives a request.
+4. **Output buffering while detached** -- and this is a **product decision, not an
+   engineering one**. How much output is retained, what happens when the bound is hit,
+   and what the block list shows for a gap it cannot fill. Decide it before building it.
+5. **Reattach**: enumerate sessions on connect, re-adopt by id, replay what was buffered.
+6. **The client seam**: a `SessionType::Remote` whose pty lives on the far side, where
+   the terminal model expects a local handle.
+
+**Already done, and the reason this is an extension rather than a new binary:** install
+over SSH with a build-time-pinned SHA-256 that fails closed, a framed protocol with size
+limits, the proxy/daemon split with identity-scoped sockets, and preinstall capability
+detection (`RemoteOs`, `RemoteArch`, `UnsupportedReason`). That is the tedious half, it
+ships today, and it is already the only warpification route on Windows -- so it is
+also the cross-platform substrate requirement 1 demands.
+
+**Known unknown:** spawning a pty on a *Windows remote* is its own problem (ConPTY on the
+far side), and is not answered by the fact that the install path works there. Do not
+assume requirement 1 is satisfied for session ownership just because it is satisfied for
+file queries.
+
 ### What the remote-server extension already does — answered 2026-09-05
 
 **It has, and these are the tedious parts:** an install path over SSH that downloads a
