@@ -534,6 +534,49 @@ already the only warpification route on Windows. The right first question is not
 should we build" but **"what does the remote-server extension already do, and what is
 missing for it to own a session rather than assist a shell?"**
 
+### Host groups: a service is rarely one machine — 2026-09-12
+
+**Proposed by the maintainer.** Hosts are not independent. A service is split across
+several -- `web-1`, `web-2`, `db-1` are one thing called `prod-api` -- and the useful
+question is almost never "what is on web-2", it is "where in prod-api is this happening".
+
+So the registry holds **groups**, not just hosts: a named set, install managed across the
+set, and the client able to ask a question of the group rather than of each machine in
+turn.
+
+**This is what makes the broker worth building.** Model C was justified on topology (N
+surfaces x M endpoints) and on Windows, and with a single endpoint it is indirection for
+its own sake. A group query is a genuine fan-out: one question, N hosts, results merged.
+That is the case a broker exists for, and it is the first one that is real rather than
+anticipated. Sequencing stands -- one working endpoint first -- but this is the
+destination that justifies the road.
+
+**Four questions to settle before building, none of which have obvious answers:**
+
+1. **Is a group a session target?** Probably not. "Open a shell on prod-api" is
+   meaningless -- a shell runs on one machine. But "search prod-api" is meaningful. So a
+   host is a *session* target and a group is a *query* target, and conflating them will
+   produce a menu entry that cannot work. Keep the distinction in the types.
+
+2. **Result attribution.** A grep across three hosts returns matches that are
+   indistinguishable without their origin. Every result from a group query has to carry
+   which host produced it, and the block list has to show that -- otherwise the answer is
+   worse than useless, because it looks authoritative and is unlocatable.
+
+3. **Partial failure.** Two of three hosts answer and one is unreachable. That is neither
+   success nor failure, and calling it either is wrong: reporting success hides a gap in
+   the answer, reporting failure discards two thirds of a useful result. The result type
+   has to represent "answered by these, not by those", and the agent has to be told,
+   because it will otherwise reason from an incomplete search as though it were complete.
+
+4. **Install across a group.** Installing on four hosts is four fail-closed script runs
+   with four outcomes. Same partial-failure problem, and the UI has to show per-host
+   state rather than a single spinner that resolves to a lie.
+
+**What this does not change:** the security posture. A group is a label over hosts, each
+still reached by its own ssh connection on the user's own keys. There is no group-level
+credential, no shared channel, and no host that can speak for another.
+
 ### Requirement 5 needs a surface, and a registry that does not exist — 2026-09-12
 
 "Discoverable and disposable -- the app can tell whether it is installed, install it,
