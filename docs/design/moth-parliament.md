@@ -561,10 +561,16 @@ list, and the `+` new-session menu.
 
 **Decide before building:**
 
-1. **Does it persist and restore?** The settings pane's behaviour is the reference. A
-   dashboard restoring into a stale view is worse than not restoring, unless it re-probes
-   on open -- which is the more likely right answer, since everything it shows is a claim
-   about another machine.
+1. **It re-probes on open. DECIDED 2026-09-12.** The pane persists and restores like the
+   settings pane, but its contents are never restored as fact: everything it shows is a
+   claim about another machine, and a restored claim is a claim about the past. On open it
+   re-probes and shows what it currently knows while doing so, rather than presenting
+   stale state as current.
+
+   This is also why the registry's observed fields must be advisory rather than
+   authoritative -- they live in hand-editable settings, can be synced to a machine where
+   they were never true, and are in any case only ever a snapshot. The dashboard treats
+   them as the last thing seen, not as the state of the world.
 2. **What does it show when a host has never been reached?** The registry can hold a
    declared target with no observed state at all. "Unknown" must be visibly distinct from
    "not installed", exactly as the footer bar's unknown-host colour is distinct from a
